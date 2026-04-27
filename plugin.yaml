@@ -1,0 +1,8 @@
+name: skill-creation-guard
+version: "0.1.0"
+description: Guard Hermes skill_manage calls by blocking low-value skill creation and logging skill mutations.
+author: HermesAgent
+kind: standalone
+provides_hooks:
+  - pre_llm_call
+  - pre_tool_call
