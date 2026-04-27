@@ -99,3 +99,11 @@ def test_audit_log_written_for_blocked_create(tmp_path):
     rows = [json.loads(line) for line in log_path.read_text().splitlines()]
     assert rows[-1]["action"] == "create"
     assert rows[-1]["decision"]["verdict"] == "block"
+    assert rows[-1]["blocked"] is True
+    assert rows[-1]["event_type"] == "skill_manage_blocked"
+    assert rows[-1]["target_type"] == "skill"
+    assert rows[-1]["target_name"] == "progress"
+    assert rows[-1]["skill_name"] == "progress"
+    assert rows[-1]["blocked_at_utc"].endswith("Z")
+    assert rows[-1]["blocked_at_local"]
+    assert rows[-1]["observed_at_utc"] == rows[-1]["blocked_at_utc"]

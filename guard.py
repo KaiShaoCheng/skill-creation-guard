@@ -197,6 +197,16 @@ def _write_audit(event: dict[str, Any], audit_dir: Optional[Path] = None) -> Non
         f.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def _now_fields() -> dict[str, str]:
+    """Return machine-readable UTC and local timestamps for audit records."""
+    now_utc = datetime.now(timezone.utc).replace(microsecond=0)
+    now_local = now_utc.astimezone().replace(microsecond=0)
+    return {
+        "observed_at_utc": now_utc.isoformat().replace("+00:00", "Z"),
+        "observed_at_local": now_local.isoformat(),
+    }
+
+
 def _block_message(decision: Decision, action: str) -> str:
     return (
         "skill-creation-guard blocked skill_manage "
@@ -231,11 +241,23 @@ def pre_tool_call_guard(
         decision = evaluate_skill_mutation(args or {}, action)
 
     content = _content_from_args(args or {})
+    time_fields = _now_fields()
+    target_name = (args or {}).get("name")
     event = {
-        "ts": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "event_type": "skill_manage_blocked" if not decision.allowed else "skill_manage_allowed",
+        # Backward-compatible timestamp alias. Prefer observed_at_utc in new readers.
+        "ts": time_fields["observed_at_utc"],
+        **time_fields,
+        "blocked_at_utc": time_fields["observed_at_utc"] if not decision.allowed else None,
+        "blocked_at_local": time_fields["observed_at_local"] if not decision.allowed else None,
+        "blocked": not decision.allowed,
         "tool": tool_name,
         "action": action,
-        "skill_name": (args or {}).get("name"),
+        # skill_name is kept for compatibility; target_* makes the audit log explicit
+        # about what was intercepted.
+        "target_type": "skill",
+        "target_name": target_name,
+        "skill_name": target_name,
         "task_id": task_id,
         "session_id": session_id,
         "content_sha256": hashlib.sha256(content.encode("utf-8", errors="ignore")).hexdigest() if content else None,
