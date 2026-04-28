@@ -1,6 +1,6 @@
 # skill-creation-guard
 
-Hermes plugin that guards `skill_manage` calls before they execute. It blocks low-value or risky skill creation, allows ordinary reusable skills, and records an audit log for all skill mutations it sees.
+Hermes plugin that guards `skill_manage` calls before they execute and audits filesystem-level `SKILL.md` writes. It blocks low-value or risky skill creation, allows ordinary reusable skills, and records audit logs for both tool-level decisions and file-level changes.
 
 ## Why
 
@@ -21,8 +21,10 @@ Hermes can proactively create skills after complex work. That is useful, but wit
 - Blocks obviously temporary progress/session-outcome content.
 - Blocks dangerous patterns such as `curl | bash`, `rm -rf /`, access to `~/.ssh`, `eval(...)`, etc.
 - Lowers the score threshold when the user explicitly asked to create a skill, while still enforcing safety checks.
-- Writes JSONL audit events to `~/.hermes/skills-audit/skill-creation-guard.jsonl` by default.
+- Writes tool-level JSONL audit events to `~/.hermes/skills-audit/skill-creation-guard.jsonl` by default.
 - For every blocked call, records exactly what was intercepted (`target_type`, `target_name`/`skill_name`, `action`), when it was intercepted (`blocked_at_utc`, `blocked_at_local`), and why (`decision.reasons`).
+- Also audits filesystem-level `SKILL.md` writes under Hermes skill roots and records created/modified/deleted files in `skill-file-audit.jsonl`.
+- Runs file auditing on `on_session_start`, throttled `post_tool_call`, and can be run periodically via `python skill_file_audit.py` for writes made outside active Hermes turns.
 
 ## Install in Hermes
 
@@ -54,6 +56,43 @@ Environment variables:
 - `SKILL_CREATION_GUARD_THRESHOLD` — default `6.5`; threshold for autonomous skill creation.
 - `SKILL_CREATION_GUARD_DIRECT_THRESHOLD` — default `4.5`; threshold when the user explicitly asks to create/save a skill.
 - `HERMES_HOME` — if set, audit logs go under `$HERMES_HOME/skills-audit/`; otherwise `~/.hermes/skills-audit/`.
+- `SKILL_FILE_AUDIT_INTERVAL_SECONDS` — default `60`; throttle interval for hook-triggered filesystem scans.
+
+## Filesystem write audit
+
+The plugin writes file-level events to:
+
+```text
+~/.hermes/skills-audit/skill-file-audit.jsonl
+```
+
+It also keeps scanner state in:
+
+```text
+~/.hermes/skills-audit/skill-file-audit-state.json
+```
+
+Each record includes `event_type` (`skill_file_created`, `skill_file_modified`, or `skill_file_deleted`), `target_name`/`skill_name`, category, path, UTC/local observation time, current SHA-256, previous SHA-256 for modifications/deletions, and file size.
+
+Run a manual scan:
+
+```bash
+python ~/.hermes/profiles/kaishao-admin/plugins/skill-creation-guard/skill_file_audit.py
+```
+
+For near-continuous coverage of writes made outside active Hermes turns, run the scanner periodically with cron/systemd/Hermes cron. This deployment includes two optional user-level systemd units:
+
+- `hermes-skill-file-watch.service`: uses `inotifywait` to record raw `SKILL.md` create/write/delete/move events in near real time.
+- `hermes-skill-file-audit-scan.timer`: runs a once-per-minute semantic scan as a fallback and catches writes missed by the watcher.
+
+Install the templates from `systemd/` into `~/.config/systemd/user/`, then run:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now hermes-skill-file-watch.service
+systemctl --user enable --now hermes-skill-file-audit-scan.timer
+```
+
 
 ## Audit log example
 

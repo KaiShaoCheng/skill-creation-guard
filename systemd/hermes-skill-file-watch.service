@@ -1,0 +1,14 @@
+[Unit]
+Description=Hermes skill file inotify watcher
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.hermes/profiles/kaishao-admin/plugins/skill-creation-guard
+ExecStart=%h/.hermes/profiles/kaishao-admin/plugins/skill-creation-guard/scripts/watch-skill-files.sh
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

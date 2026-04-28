@@ -186,6 +186,9 @@ def _default_audit_dir() -> Path:
     home = os.getenv("HERMES_HOME")
     if home:
         return Path(home) / "skills-audit"
+    profile_home = Path.home() / ".hermes" / "profiles" / "kaishao-admin"
+    if profile_home.exists():
+        return profile_home / "skills-audit"
     return Path.home() / ".hermes" / "skills-audit"
 
 
