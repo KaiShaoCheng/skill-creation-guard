@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict
@@ -24,6 +25,7 @@ def _load_local_module(name: str):
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot load local plugin module {name}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 

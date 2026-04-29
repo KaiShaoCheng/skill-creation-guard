@@ -89,7 +89,7 @@ Run a manual scan:
 python ~/.hermes/profiles/kaishao-admin/plugins/skill-creation-guard/skill_file_audit.py
 ```
 
-Backfill origin tags for existing file-level events:
+Backfill origin tags for existing file-level events. Backfill will use Hermes hub lock metadata when available, so already-installed hub skills are tagged as `install-sync` instead of generic `external-write`:
 
 ```bash
 python ~/.hermes/profiles/kaishao-admin/plugins/skill-creation-guard/skill_origin_audit.py

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from skill_origin_audit import enrich_file_event, default_origin_log_path, classify_origin
+from skill_origin_audit import backfill_origin_events, enrich_file_event, default_origin_log_path, classify_origin
 
 
 def write_event(audit_dir: Path, event_type: str, target_name: str, path: str, ts: str):
@@ -80,3 +80,33 @@ def test_enriches_existing_file_audit_events(tmp_path):
     assert rows[-1]["origin"] == "runtime-create"
     assert rows[-1]["target_name"] == "new-skill"
     assert rows[-1]["observed_at_utc"] == "2026-04-28T10:00:00Z"
+
+
+def test_backfill_uses_hub_lock_metadata_for_install_sync(tmp_path):
+    audit_dir = tmp_path / "audit"
+    audit_dir.mkdir()
+    write_event(
+        audit_dir,
+        "skill_file_created",
+        "hub-installed-skill",
+        "/tmp/skills/research/hub-installed-skill/SKILL.md",
+        "2026-04-29T10:00:00Z",
+    )
+
+    appended = backfill_origin_events(
+        audit_dir,
+        lock_resolver=lambda name: {
+            "source": "skills-sh",
+            "trust_level": "community",
+            "installed_at": "2026-04-29T09:59:00Z",
+        }
+        if name == "hub-installed-skill"
+        else None,
+    )
+
+    assert appended == 1
+    rows = [json.loads(line) for line in default_origin_log_path(audit_dir).read_text(encoding="utf-8").splitlines()]
+    assert rows[-1]["origin"] == "install-sync"
+    assert rows[-1]["origin_source"] == "hub-lockfile"
+    assert rows[-1]["hub_source"] == "skills-sh"
+    assert rows[-1]["hub_trust_level"] == "community"

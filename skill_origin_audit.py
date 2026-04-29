@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 ORIGIN_LOG_FILE = "skill-origin-audit.jsonl"
 DEFAULT_AUDIT_DIR_FALLBACK = Path.home() / ".hermes" / "profiles" / "kaishao-admin" / "skills-audit"
@@ -135,12 +135,26 @@ def load_origin_events(audit_dir: Path) -> list[Dict[str, Any]]:
     return rows
 
 
-def backfill_origin_events(audit_dir: Path, default_origin: str = "external-write") -> int:
+def _default_lock_resolver(skill_name: str) -> Dict[str, Any] | None:
+    try:
+        from skill_origin_tools import read_lock_entry_for_skill
+
+        return read_lock_entry_for_skill(skill_name)
+    except Exception:
+        return None
+
+
+def backfill_origin_events(
+    audit_dir: Path,
+    default_origin: str = "external-write",
+    lock_resolver: Callable[[str], Dict[str, Any] | None] | None = None,
+) -> int:
     """Write origin events for any file audit events that are not yet covered."""
     source_path = audit_dir / "skill-file-audit.jsonl"
     if not source_path.exists():
         return 0
 
+    lock_resolver = lock_resolver or _default_lock_resolver
     seen: set[tuple[str, str, str, str]] = set()
     for row in load_origin_events(audit_dir):
         key = (
@@ -166,32 +180,35 @@ def backfill_origin_events(audit_dir: Path, default_origin: str = "external-writ
             )
             if key in seen:
                 continue
+            target_name = str(event.get("target_name") or event.get("skill_name") or "")
+            lock_entry = lock_resolver(target_name) if target_name else None
+            origin = classify_origin(
+                event_type=event.get("event_type", ""),
+                tool_name="",
+                action="",
+                session_id="",
+                lock_entry=lock_entry,
+            )
+            if not lock_entry and default_origin != "external-write":
+                origin = default_origin
+            now = _now_fields()
             enriched = {
                 **event,
                 "audit_origin_version": 1,
-                "origin": default_origin,
+                "origin": origin,
                 "tool_name": None,
                 "action": None,
                 "session_id": None,
-                "origin_source": "backfill-infer",
-                "hub_source": None,
-                "hub_trust_level": None,
-                "hub_installed_at": None,
-                "recorded_at_utc": _now_fields()["observed_at_utc"],
-                "recorded_at_local": _now_fields()["observed_at_local"],
+                "origin_source": "hub-lockfile" if lock_entry else "backfill-infer",
+                "hub_source": lock_entry.get("source") if lock_entry else None,
+                "hub_trust_level": lock_entry.get("trust_level") if lock_entry else None,
+                "hub_installed_at": lock_entry.get("installed_at") if lock_entry else None,
+                "recorded_at_utc": now["observed_at_utc"],
+                "recorded_at_local": now["observed_at_local"],
             }
             write_origin_events(audit_dir, [enriched])
             appended += 1
     return appended
-
-
-def _now_fields() -> Dict[str, str]:
-    now_utc = datetime.now(timezone.utc).replace(microsecond=0)
-    now_local = now_utc.astimezone().replace(microsecond=0)
-    return {
-        "observed_at_utc": now_utc.isoformat().replace("+00:00", "Z"),
-        "observed_at_local": now_local.isoformat(),
-    }
 
 
 if __name__ == "__main__":
