@@ -1,6 +1,6 @@
 # skill-creation-guard
 
-Hermes plugin that guards `skill_manage` calls before they execute and audits filesystem-level `SKILL.md` writes. It blocks low-value or risky skill creation, allows ordinary reusable skills, and records audit logs for both tool-level decisions and file-level changes.
+Hermes plugin that guards `skill_manage` calls before they execute, audits filesystem-level `SKILL.md` writes, and enriches every observed skill write with creation origin metadata. It answers "runtime creation, install sync, or external write" for every skill change it records.
 
 ## Why
 
@@ -25,6 +25,7 @@ Hermes can proactively create skills after complex work. That is useful, but wit
 - For every blocked call, records exactly what was intercepted (`target_type`, `target_name`/`skill_name`, `action`), when it was intercepted (`blocked_at_utc`, `blocked_at_local`), and why (`decision.reasons`).
 - Also audits filesystem-level `SKILL.md` writes under Hermes skill roots and records created/modified/deleted files in `skill-file-audit.jsonl`.
 - Runs file auditing on `on_session_start`, throttled `post_tool_call`, and can be run periodically via `python skill_file_audit.py` for writes made outside active Hermes turns.
+- Enriches observed skill writes with origin metadata in `skill-origin-audit.jsonl`, classifying them as `runtime-create`, `runtime-mutation`, `runtime-delete`, `runtime-support-mutation`, `runtime-support-delete`, `install-sync`, or `external-write`.
 
 ## Install in Hermes
 
@@ -72,12 +73,26 @@ It also keeps scanner state in:
 ~/.hermes/skills-audit/skill-file-audit-state.json
 ```
 
-Each record includes `event_type` (`skill_file_created`, `skill_file_modified`, or `skill_file_deleted`), `target_name`/`skill_name`, category, path, UTC/local observation time, current SHA-256, previous SHA-256 for modifications/deletions, and file size.
+Each file-level record includes `event_type` (`skill_file_created`, `skill_file_modified`, or `skill_file_deleted`), `target_name`/`skill_name`, category, path, UTC/local observation time, current SHA-256, previous SHA-256 for modifications/deletions, and file size.
+
+The plugin also writes an origin enrichment log to:
+
+```text
+~/.hermes/skills-audit/skill-origin-audit.jsonl
+```
+
+Each origin record includes the original write metadata plus `origin`, `origin_source`, `tool_name`, `action`, `session_id`, `hub_source`, `hub_trust_level`, `hub_installed_at`, and the enrichment timestamp.
 
 Run a manual scan:
 
 ```bash
 python ~/.hermes/profiles/kaishao-admin/plugins/skill-creation-guard/skill_file_audit.py
+```
+
+Backfill origin tags for existing file-level events:
+
+```bash
+python ~/.hermes/profiles/kaishao-admin/plugins/skill-creation-guard/skill_origin_audit.py
 ```
 
 For near-continuous coverage of writes made outside active Hermes turns, run the scanner periodically with cron/systemd/Hermes cron. This deployment includes two optional user-level systemd units:

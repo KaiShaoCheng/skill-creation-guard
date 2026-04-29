@@ -1,6 +1,6 @@
 name: skill-creation-guard
-version: "0.2.0"
-description: Guard Hermes skill_manage calls and audit all filesystem-level SKILL.md writes.
+version: "0.3.0"
+description: Guard Hermes skill_manage calls, audit filesystem-level SKILL.md writes, and enrich every observed skill write with creation origin metadata.
 author: HermesAgent
 kind: standalone
 provides_hooks:
